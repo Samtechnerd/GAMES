@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Controller with Speed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%;
+      width: 100%;
+      background: #111;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: 20px;
+    }
+
+    #roomBox {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 6px;
+      color: white;
+      z-index: 10;
+    }
+
+    h2 { color: white; margin:10px 0; }
+
+    .section {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 10px;
+      width: 95%;
+      max-width: 800px;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      padding: 30px;
+      font-size: 20px;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      color: white;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    .btn:active { transform: scale(0.95); }
+
+    /* Effect colors */
+    .solid { background:#555; }
+    .flash { background:#ff00ff; }
+    .pulse { background:#00ffff; color:#000; }
+    .strobe { background:#ffff00; color:#000; }
+    .off { background:#000; }
+
+    /* Color buttons */
+    .red { background:#ff0000; }
+    .green { background:#00ff00; }
+    .blue { background:#0000ff; }
+    .white { background:#ffffff; color:#000; }
+
+    /* Sequence buttons */
+    .rainbow { background: linear-gradient(90deg, red, orange, yellow, green, blue, indigo, violet); color:#000; }
+    .police { background:#0000ff; }
+    .party { background:#ff00ff; }
+    
+    #speedContainer { width: 95%; max-width: 800px; margin-bottom: 20px; color:white; }
+    #speedLabel { margin-bottom:5px; display:block; }
+  </style>
+</head>
+<body>
+
+<div id="roomBox">
+  Room: <input id="room" value="1234" style="width:70px; font-size:16px;">
+</div>
+
+<h2>Select Effect</h2>
+<div class="section" id="effects">
+  <button class="btn solid" data-effect="solid">Solid</button>
+  <button class="btn flash" data-effect="flash">Flash</button>
+  <button class="btn pulse" data-effect="pulse">Pulse</button>
+  <button class="btn strobe" data-effect="strobe">Strobe</button>
+  <button class="btn off" data-effect="off">Off</button>
+</div>
+
+<h2>Select Color</h2>
+<div class="section" id="colors">
+  <button class="btn red" data-color="#ff0000">Red</button>
+  <button class="btn green" data-color="#00ff00">Green</button>
+  <button class="btn blue" data-color="#0000ff">Blue</button>
+  <button class="btn white" data-color="#ffffff">White</button>
+</div>
+
+<h2>Sequences</h2>
+<div class="section" id="sequences">
+  <button class="btn rainbow" data-sequence="rainbow">Rainbow</button>
+  <button class="btn police" data-sequence="police">Police</button>
+  <button class="btn party" data-sequence="party">Party</button>
+</div>
+
+<div id="speedContainer">
+  <label id="speedLabel" for="speed">Effect Speed: <span id="speedValue">1.0x</span></label>
+  <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBxKzRFaNLPYT5WOxBr6L2SnxHjk3c8UNM",
+  authDomain: "wristphoneled.firebaseapp.com",
+  databaseURL: "https://wristphoneled-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "wristphoneled",
+  storageBucket: "wristphoneled.firebasestorage.app",
+  messagingSenderId: "838008324706",
+  appId: "1:838008324706:web:870dfd10ae83c39140473b",
+  measurementId: "G-K2XV4B4Q61"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let selectedEffect = 'solid';
+let speed = 1;
+
+// Speed slider
+const speedSlider = document.getElementById('speed');
+const speedValueLabel = document.getElementById('speedValue');
+speedSlider.addEventListener('input', ()=>{
+  speed = parseFloat(speedSlider.value);
+  speedValueLabel.textContent = speed.toFixed(1)+'x';
+});
+
+// Select effect
+document.querySelectorAll('#effects .btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    selectedEffect = btn.dataset.effect;
+    btn.style.border = '3px solid white';  
+    document.querySelectorAll('#effects .btn').forEach(b=>{
+      if(b!==btn) b.style.border='none';
+    });
+  });
+});
+
+// Select color → send immediately
+document.querySelectorAll('#colors .btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const color = btn.dataset.color;
+    const room = document.getElementById('room').value.trim();
+    if(!room) return;
+    db.ref('rooms/' + room).set({
+      currentCommand: color,
+      effect: selectedEffect,
+      speed: speed,
+      timestamp: Date.now()
+    });
+  });
+});
+
+// Sequence buttons → send immediately
+document.querySelectorAll('#sequences .btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const seq = btn.dataset.sequence;
+    const room = document.getElementById('room').value.trim();
+    if(!room) return;
+    db.ref('rooms/' + room).set({
+      currentCommand: '#000000',
+      effect: seq,
+      speed: speed,
+      timestamp: Date.now()
+    });
+  });
+});
+</script>
+
+</body>
+</html>
