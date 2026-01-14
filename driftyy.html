@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Driftyyy</title>
+    <style>
+        body { margin: 0; background: #0b0e14; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        canvas { display: block; touch-action: none; }
+        
+        #ui { position: absolute; top: 10px; left: 10px; right: 10px; pointer-events: none; z-index: 10; display: flex; flex-direction: column; gap: 5px; }
+        .stats-row { display: flex; justify-content: space-between; align-items: flex-start; }
+        #coin-trigger { pointer-events: auto; cursor: pointer; }
+        
+        .nitro-container { width: 100%; height: 8px; background: #222; border-radius: 4px; border: 1px solid #444; overflow: hidden; }
+        #nitro-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #00d2ff, #3a7bd5); }
+        
+        .modal { position: absolute; background: rgba(15, 20, 30, 0.98); padding: 20px; border-radius: 20px; text-align: center; border: 2px solid #00d2ff; z-index: 20; width: 85%; max-width: 400px; display: flex; flex-direction: column; box-shadow: 0 0 30px black; }
+        #carList { overflow-y: auto; margin: 15px 0; max-height: 25vh; }
+        .car-btn { background: #1a1c23; color: white; border: 1px solid #444; padding: 12px; margin-bottom: 8px; cursor: pointer; width: 100%; border-radius: 10px; text-align: left; box-sizing: border-box; }
+        .active { border-color: #00d2ff; background: #0d253d; }
+        
+        #dev-menu { display: none; border-color: #ff4757; z-index: 30; font-size: 13px; text-align: left; }
+        #dev-menu input[type="text"], #dev-menu input[type="number"], #dev-menu input[type="range"] { background: #111; border: 1px solid #444; color: #00d2ff; padding: 5px; width: 90%; margin: 5px 0; border-radius: 4px; }
+        .dev-label { color: #ff4757; font-weight: bold; margin-top: 10px; display: block; text-transform: uppercase; font-size: 11px; }
+        
+        button { padding: 12px; font-size: 16px; background: #00d2ff; color: #0b0e14; border: none; cursor: pointer; border-radius: 10px; font-weight: bold; margin-top: 10px; transition: 0.2s; }
+        .reset-btn { background: #ff4757 !important; color: white !important; }
+        .upload-btn { background: #3498db; color: white; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="stats-row">
+            <div id="coin-trigger" onclick="handleCoinClick()">
+                <div style="font-size: 28px; color: #f1c40f; font-weight: bold;">¢ <span id="coinCount">0</span></div>
+                <div style="font-size: 12px; color: #00d2ff;">BEST: <span id="bestScore">0</span></div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 24px; font-weight: bold;" id="scoreCount">0</div>
+            </div>
+        </div>
+        <div class="nitro-container"><div id="nitro-bar"></div></div>
+    </div>
+
+    <div id="shop" class="modal">
+        <h2 style="margin:0; color:#00d2ff; font-style: italic; letter-spacing: 4px;">DRIFTYYY</h2>
+        <div id="carList"></div>
+        <button onclick="startGame()">START RACE</button>
+    </div>
+
+    <div id="dev-menu" class="modal">
+        <h2 style="color:#ff4757; margin:0;">DEV CONSOLE</h2>
+        <div style="overflow-y: auto; max-height: 65vh; padding-right: 5px;">
+            <label class="dev-label">System</label>
+            <button class="reset-btn" onclick="hardReset()">HARD RESET DATA</button>
+            <button onclick="setDevCoins()">Add 9999 Coins</button>
+            <label class="dev-label">Gameplay</label>
+            <div><input type="checkbox" id="inf-nitro"> Infinite Nitro</div>
+            <label class="dev-label">Custom Car Builder</label>
+            <div><input type="checkbox" id="use-custom"> Enable Custom Settings</div>
+            <div>Scale: <input type="range" id="custom-scale" min="0.5" max="3" step="0.1" value="1"></div>
+            <div>Color: <input type="color" id="custom-color" value="#00d2ff" style="width:100%; height:30px; background:none; border:none;"></div>
+            <div>Handling: <input type="number" id="custom-hand" step="0.1" value="0.5"></div>
+            <label class="dev-label">Car Image</label>
+            <input type="file" id="image-upload" accept="image/*" style="display:none" onchange="uploadImage(event)">
+            <button class="upload-btn" onclick="document.getElementById('image-upload').click()">Upload Image File</button>
+        </div>
+        <button style="background:#555; color:white;" onclick="closeDev()">EXIT DEV</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let active = false, score = 0, totalCoins = 0, highscore = 0, cameraX = 0, cameraY = 0;
+let keys = {}, roadWidth = 0, carSize = 0, coinClicks = 0, lastClick = 0;
+let customImg = new Image(), customImgLoaded = false;
+let particles = [];
+
+const cars = [
+    { name: "Starter", price: 0, handling: 0.12, color: "#e74c3c", owned: true },
+    { name: "Blue Streak", price: 20, handling: 0.35, color: "#3498db", owned: false },
+    { name: "Neon Pulse", price: 45, handling: 0.60, color: "#9b59b6", owned: false },
+    { name: "Gold Edition", price: 100, handling: 0.95, color: "#f1c40f", owned: false }
+];
+let currentCarIdx = 0;
+let player = { x: 0, y: 0, velX: 0, targetVelX: 0, nitro: 100, currentSpeed: 0 };
+let road = [], coins = [];
+
+function loadData() {
+    totalCoins = parseInt(localStorage.getItem('drift_coins')) || 0;
+    highscore = parseInt(localStorage.getItem('drift_best')) || 0;
+    document.getElementById('coinCount').innerText = totalCoins;
+    document.getElementById('bestScore').innerText = highscore;
+}
+loadData();
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    roadWidth = Math.min(canvas.width * 0.3, 130);
+    carSize = roadWidth * 0.28;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Particle System
+class Particle {
+    constructor(x, y, color, size, vx, vy) {
+        this.x = x; this.y = y; this.color = color;
+        this.size = size; this.vx = vx; this.vy = vy;
+        this.alpha = 1;
+    }
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.alpha -= 0.02; this.size *= 0.96;
+    }
+    draw() {
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+function createEffect(x, y, type) {
+    if (type === 'smoke') {
+        particles.push(new Particle(x, y, "rgba(200,200,200,0.5)", Math.random() * 5 + 2, (Math.random()-0.5)*2, Math.random()*2));
+    } else if (type === 'nitro') {
+        particles.push(new Particle(x, y, "#00d2ff", Math.random() * 3 + 1, (Math.random()-0.5)*4, 2 + Math.random()*4));
+    }
+}
+
+function handleCoinClick() {
+    const now = Date.now();
+    if (now - lastClick < 1500) coinClicks++; else coinClicks = 1;
+    lastClick = now;
+    if (coinClicks >= 5) {
+        coinClicks = 0;
+        if (prompt("Password:") === 'samisdev') {
+            document.getElementById('dev-menu').style.display = 'flex';
+            document.getElementById('shop').style.display = 'none';
+        }
+    }
+}
+
+function hardReset() { if(confirm("Wipe all data?")) { localStorage.clear(); location.reload(); } }
+function setDevCoins() { totalCoins += 9999; updateUI(); }
+function updateUI() {
+    document.getElementById('coinCount').innerText = totalCoins;
+    document.getElementById('bestScore').innerText = highscore;
+    localStorage.setItem('drift_coins', totalCoins);
+}
+function closeDev() { document.getElementById('dev-menu').style.display = 'none'; document.getElementById('shop').style.display = 'flex'; }
+
+function uploadImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => { customImg.src = e.target.result; customImg.onload = () => customImgLoaded = true; };
+        reader.readAsDataURL(file);
+    }
+}
+
+function initGame() {
+    score = 0; player.x = canvas.width/2; player.y = canvas.height*0.7; player.velX = 0;
+    cameraX = player.x - canvas.width/2; cameraY = player.y - canvas.height*0.7;
+    player.nitro = 100; road = []; coins = []; particles = [];
+    let curX = player.x - roadWidth/2, curY = player.y + 200;
+    for(let i=0; i<20; i++) {
+        let isT = (i > 4 && Math.random() > 0.6);
+        let len = 200 + Math.random() * 200;
+        let seg = { x: curX, y: curY - (isT ? roadWidth : len), w: isT ? len : roadWidth, h: isT ? roadWidth : len };
+        if(isT) curX += (len - roadWidth); else curY -= len;
+        road.push(seg);
+        if(i > 3 && Math.random() > 0.7) coins.push({x: seg.x + seg.w/2, y: seg.y + seg.h/2, collected: false});
+    }
+}
+
+window.addEventListener('keydown', (e) => keys[e.code] = true);
+window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+function startGame() { document.getElementById('shop').style.display = 'none'; initGame(); active = true; }
+
+function update() {
+    if(!active) return;
+    let infN = document.getElementById('inf-nitro').checked;
+    let isB = (keys['KeyW'] || keys['ArrowUp']) && (player.nitro > 0 || infN);
+    let drft = keys['ArrowLeft'] || keys['Space'] || keys['ArrowRight'];
+
+    if(isB) { player.currentSpeed = 11; if(!infN) player.nitro -= 0.8; createEffect(player.x, player.y + 20, 'nitro'); } 
+    else { player.currentSpeed = 5.5; if(player.nitro < 100) player.nitro += 0.25; }
+    
+    document.getElementById('nitro-bar').style.width = player.nitro + "%";
+    player.targetVelX = drft ? player.currentSpeed * 1.6 : 0;
+    
+    // Smoke on drift
+    if (Math.abs(player.velX) > 2) createEffect(player.x, player.y + 15, 'smoke');
+
+    let hand = cars[currentCarIdx].handling;
+    if(document.getElementById('use-custom').checked) hand = parseFloat(document.getElementById('custom-hand').value);
+    if (isB && drft) hand = 0.01;
+
+    player.velX += (player.targetVelX - player.velX) * hand;
+    player.x += player.velX; player.y -= player.currentSpeed;
+    cameraX += ((player.x - canvas.width/2) - cameraX) * 0.1;
+    cameraY += ((player.y - canvas.height*0.7) - cameraY) * 0.1;
+
+    score += (player.currentSpeed / 60);
+    document.getElementById('scoreCount').innerText = Math.floor(score);
+
+    let onR = false;
+    road.forEach(s => { if(player.x > s.x && player.x < s.x + s.w && player.y > s.y && player.y < s.y + s.h) onR = true; });
+    coins.forEach(c => { if(!c.collected && Math.hypot(player.x - c.x, player.y - c.y) < carSize) { c.collected = true; totalCoins++; updateUI(); } });
+
+    let last = road[road.length - 1];
+    if(last.y > player.y - canvas.height) {
+        let isT = Math.random() > 0.5; let len = 300 + Math.random() * 200;
+        let nX = last.w > roadWidth ? last.x + last.w - roadWidth : last.x;
+        road.push({ x: nX, y: isT ? last.y : last.y - len, w: isT ? len : roadWidth, h: isT ? roadWidth : len });
+        if(Math.random() > 0.6) coins.push({x: nX + roadWidth/2, y: last.y - 100, collected: false});
+    }
+
+    particles.forEach((p, i) => { p.update(); if(p.alpha <= 0) particles.splice(i, 1); });
+
+    if(road[0].y > player.y + 600) road.shift();
+    if(!onR) {
+        active = false;
+        if(score > highscore) { highscore = Math.floor(score); localStorage.setItem('drift_best', highscore); updateUI(); }
+        document.getElementById('shop').style.display = 'flex';
+        renderShop();
+    }
+}
+
+function renderShop() {
+    const list = document.getElementById('carList'); list.innerHTML = '';
+    cars.forEach((c, i) => {
+        let btn = document.createElement('div'); btn.className = `car-btn ${i === currentCarIdx ? 'active' : ''}`;
+        btn.innerHTML = `<strong>${c.name}</strong><span style="float:right">${c.owned ? 'OWNED' : c.price + '¢'}</span>`;
+        btn.onclick = () => { if(c.owned) currentCarIdx = i; else if(totalCoins >= c.price) { totalCoins -= c.price; updateUI(); c.owned = true; currentCarIdx = i; } renderShop(); };
+        list.appendChild(btn);
+    });
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save(); ctx.translate(-cameraX, -cameraY);
+
+    road.forEach(s => { ctx.fillStyle = "#1e272e"; ctx.fillRect(s.x, s.y, s.w, s.h); ctx.strokeStyle = "#34495e"; ctx.lineWidth = 2; ctx.strokeRect(s.x, s.y, s.w, s.h); });
+    ctx.fillStyle = "#f1c40f"; coins.forEach(c => { if(!c.collected) { ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill(); }});
+    particles.forEach(p => p.draw());
+
+    ctx.save(); ctx.translate(player.x, player.y);
+    ctx.rotate((player.velX / 8) * (Math.PI / 2));
+    let scale = document.getElementById('use-custom').checked ? parseFloat(document.getElementById('custom-scale').value) : 1;
+    ctx.scale(scale, scale);
+
+    let isC = document.getElementById('use-custom').checked;
+    if(isC && customImgLoaded) { ctx.drawImage(customImg, -carSize/2, -carSize*0.75, carSize, carSize*1.5); } 
+    else {
+        ctx.fillStyle = isC ? document.getElementById('custom-color').value : cars[currentCarIdx].color;
+        ctx.fillRect(-carSize/2, -carSize*0.75, carSize, carSize*1.5);
+        ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.fillRect(-carSize*0.4, -carSize*0.6, carSize*0.8, carSize*0.3);
+    }
+    ctx.restore(); ctx.restore();
+    update(); requestAnimationFrame(draw);
+}
+renderShop(); draw();
+</script>
+</body>
+</html>
